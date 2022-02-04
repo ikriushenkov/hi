@@ -47,7 +47,7 @@ import           Text.Read                       (readMaybe)
 
 -- | Evaluates the value of the expression (Right) or returns an error (Left)
 eval :: HiMonad m => HiExpr -> m (Either HiError HiValue)
-eval e = runExceptT $ eval' e
+eval = runExceptT . eval'
 
 -- |  Evaluates the value of the expression in ExceptT
 eval' :: HiMonad m => HiExpr -> ExceptT HiError m HiValue
@@ -60,11 +60,11 @@ eval' (HiExprRun action) = do
 
 -- | Return an error of evaluating
 throw :: HiMonad m => HiError -> ExceptT HiError m a
-throw err = except $ Left err
+throw = except . Left
 
 -- | Return value
 returnVal :: HiMonad m => a -> ExceptT HiError m a
-returnVal value = except $ Right value
+returnVal = except . Right
 
 -- evaluate an expression
 
@@ -187,8 +187,8 @@ applySliceable str [n] = do
     Nothing -> returnVal HiValueNull
     Just ch -> returnVal $ toValue ch
 applySliceable str [from, to] = do
-  fromIndex <- toCorrectIndex str <$> fromExpr from <|> 0 <$ evalNull from
-  toIndex <- toCorrectIndex str <$> fromExpr to <|> length str <$ evalNull to
+  fromIndex <- toCorrectIndex str <$> fromExpr from <|> 0 <$ fromExpr @() from
+  toIndex <- toCorrectIndex str <$> fromExpr to <|> length str <$ fromExpr @() to
   returnVal $ toValue $ correctSlice fromIndex toIndex str
 applySliceable _ _ = throw HiErrorArityMismatch
 
@@ -196,7 +196,7 @@ applySliceable _ _ = throw HiErrorArityMismatch
 
 -- | Evaluate an action
 evalAction :: HiMonad m => HiAction -> ExceptT HiError m HiValue
-evalAction action = lift $ runAction action
+evalAction = lift . runAction
 
 -- | Evaluate an unary action
 evalUnaryFunAction :: (ToType a, HiMonad m) => (a -> HiAction) -> [HiValue] -> ExceptT HiError m HiValue
@@ -300,7 +300,7 @@ instance ToType Rational where
 
 instance ToType Int where
   toType expr = do
-    value <- evalNumber expr
+    value <- toType expr
     case value of
       (x :% y) -> case quotRem x y of
         (n, 0) ->
@@ -322,9 +322,7 @@ instance ToType () where
   toType = valueToType
 
 instance ToType a => ToType (Seq a) where
-  toType (HiValueList list) = do
-    value <- mapM toType list
-    returnVal value
+  toType (HiValueList list) = mapM toType list
   toType _ = throw HiErrorInvalidArgument
 
 instance ToType HiValue where
@@ -588,11 +586,3 @@ fromExpr :: (ToType a, HiMonad m) => HiExpr -> ExceptT HiError m a
 fromExpr expr = do
   value <- eval' expr
   toType value
-
--- | Evaluate exactly a number
-evalNumber :: HiMonad m => HiValue -> ExceptT HiError m Rational
-evalNumber = toType
-
--- | Evaluate exactly a null
-evalNull :: HiMonad m => HiExpr -> ExceptT HiError m ()
-evalNull = fromExpr
